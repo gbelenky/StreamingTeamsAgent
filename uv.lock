@@ -1538,6 +1538,7 @@ dependencies = [
     { name = "microsoft-agents-hosting-aiohttp" },
     { name = "microsoft-agents-hosting-core" },
     { name = "microsoft-agents-hosting-teams" },
+    { name = "openai" },
     { name = "python-dotenv" },
 ]
 
@@ -1552,6 +1553,7 @@ requires-dist = [
     { name = "microsoft-agents-hosting-aiohttp", specifier = "==1.0.0" },
     { name = "microsoft-agents-hosting-core", specifier = "==1.0.0" },
     { name = "microsoft-agents-hosting-teams", specifier = "==1.0.0" },
+    { name = "openai", specifier = ">=1.55.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
 ]
 
