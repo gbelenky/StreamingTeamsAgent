@@ -19,6 +19,196 @@ No pre-release packages. No multi-agent orchestration. ~150 lines of agent code.
 
 ---
 
+## 0. For Python AI engineers new to Teams / Bot Service
+
+If you've built an OpenAI-style streaming app before, you already understand 80% of this repo. The other 20% is wiring it to Teams. This section is the conceptual primer; skip it if you've shipped a Bot Framework / M365 Agents app before.
+
+### 0.1 What you're actually building
+
+A standard async Python web server (`aiohttp` on port 3978) that:
+
+1. Receives JSON activities on `POST /api/messages`
+2. Calls `AsyncAzureOpenAI` against a Foundry deployment, `stream=True`
+3. Pushes each token back through the **M365 Agents SDK** streaming API, which under the hood emits `typing` activities that Teams renders as a live updating bubble — and finishes with a `final` message activity.
+
+That's it. The novelty over a vanilla FastAPI service is steps 1 and 3: how messages reach you, and how Teams renders streaming.
+
+### 0.2 The three systems involved
+
+```
+User types in Teams
+        │
+        ▼
+Teams web / desktop client                 ← UI
+        │
+        ▼
+Azure Bot Service (Bot Framework Connector) ← cloud router, you don't deploy this
+        │   POST /api/messages   (Bearer JWT signed by Bot Service)
+        ▼
+Dev Tunnel (https://xxx-3978.euw.devtunnels.ms)  ← only during local dev
+        │
+        ▼
+Your aiohttp server on localhost:3978       ← THIS repo
+        │
+        ▼  async for chunk in openai_response: stream.queue_text_chunk(token)
+        │
+        └──► back through the same chain as `typing` activities → Teams updates the bubble
+```
+
+| Piece | What it does | Where it lives |
+|---|---|---|
+| **Teams** | Chat UI; renders streaming typing-indicators | Microsoft cloud |
+| **Azure Bot Service** | Message broker. Holds an Entra app registration (clientId + secret) that proves *your* bot is allowed to talk to *that* Teams app | Microsoft cloud |
+| **Your code** | Receives `POST /api/messages`, calls Foundry, streams back | `localhost:3978` in dev, App Service in prod |
+
+Bot Service is the **router**. You never call Teams APIs directly — you reply through Bot Service, and Bot Service fans out to Teams / Slack / WebChat / etc. The same agent code works on every channel.
+
+### 0.3 The M365 Agents SDK in one paragraph
+
+`microsoft-agents-*` is the successor to Bot Framework SDK v4. It wraps:
+- an aiohttp web server (`microsoft-agents-hosting-aiohttp`)
+- a JWT validation middleware that verifies Bot Service is the caller
+- an "agent app" router with FastAPI-style decorators (`@agent_app.activity("message")`)
+- auth/token management for outbound Bot Connector calls
+- **`TurnContext.streaming_response`** — the only "magic" part; sends `typing` activities with `StreamInfo` entities that Teams renders as a live updating bubble.
+
+The mental model is identical to Flask/FastAPI: decorate handlers, return responses. The new thing is that a response can be a *sequence of typing activities* instead of a single message.
+
+### 0.4 How streaming actually works on the wire
+
+Non-streaming bot:
+
+```
+client → POST /api/messages         (one user message)
+agent  → POST .../activities        (one final message activity)
+```
+
+Streaming bot (what this repo does):
+
+```
+client → POST /api/messages
+agent  → POST .../activities    type=typing, text="The"
+agent  → POST .../activities    type=typing, text="The Roman"
+agent  → POST .../activities    type=typing, text="The Roman Empire"
+agent  → ...
+agent  → POST .../activities    type=message, text="The Roman Empire was..."   ← final
+```
+
+Each typing activity carries a `StreamInfo` entity (`stream_type=streaming`, `stream_sequence=N`) so Teams knows to **update the existing bubble** instead of rendering a new message. The terminal `message` activity carries `stream_type=final` and replaces the bubble with the canonical text.
+
+`StreamingResponse` handles all of that. You just call `stream.queue_text_chunk(token)` per OpenAI delta.
+
+### 0.5 The `on_message` handler (the only code that matters for the demo)
+
+```python
+@agent_app.activity("message")
+async def on_message(context, _state):
+    stream = context.streaming_response
+    stream.set_generated_by_ai_label(True)
+    stream._interval = 0.15                            # flush every 150 ms
+
+    stream.queue_informative_update("Consulting the history books…")
+
+    client = get_openai_client()                       # AsyncAzureOpenAI
+    response = await client.chat.completions.create(
+        model="gpt-4.1-mini", stream=True,
+        messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                  {"role": "user", "content": context.activity.text}],
+    )
+    async for chunk in response:
+        token = chunk.choices[0].delta.content
+        if token:
+            stream.queue_text_chunk(token)
+            await asyncio.sleep(0)                     # yield to the SDK's flusher
+
+    await stream.wait_for_queue()                      # drain the last typing activity
+    await stream.end_stream()                          # send the final canonical message
+```
+
+The non-obvious bits — these are the four things that bite everyone:
+
+| Line | Why it matters |
+|---|---|
+| `AsyncAzureOpenAI` | A sync OpenAI client + `for chunk in response` would block the asyncio event loop → the SDK's background flusher never runs → all tokens dump at the end. |
+| `stream._interval = 0.15` | The SDK default for Teams is `1.0s`. Lower = more visible chunks. Below ~`0.1s` you hit Teams Bot Connector rate limits (`429`). |
+| `await asyncio.sleep(0)` | Yields the loop so the SDK's `_drain_queue` coroutine can run between bursts of tokens. |
+| `await stream.wait_for_queue()` before `end_stream()` | Drains the last pending typing activity so the final "message" doesn't visibly jump (the final message contains the full accumulated text — without the drain, the last ~150 ms of tokens appear all at once). |
+
+### 0.6 The two authentication flows (also bites everyone)
+
+1. **Teams → Your code** (inbound). Bot Service signs a JWT (`iss=https://api.botframework.com/`); the SDK's `jwt_authorization_middleware` verifies it on every `/api/messages`. Config: the bot's `clientId` + `clientSecret` (from `aadApp/create`).
+2. **Your code → Bot Connector** (outbound replies). You acquire a token against your tenant with the same `clientId` + `clientSecret`, scope `https://api.botframework.com/.default`. Sent as `Bearer` on every outbound activity post. **This requires the Entra app to have a Service Principal in your tenant.** Usually auto-created — if you ever see `AADSTS7000229`, run `az ad sp create --id <clientId>`.
+3. **Your code → Foundry** (model calls). `DefaultAzureCredential` (Managed Identity in prod, `az login` in dev), scope `https://cognitiveservices.azure.com/.default`. No API keys.
+
+### 0.7 Why local dev needs a public URL (dev tunnel)
+
+Bot Service is in the cloud. It must `POST` to `your-bot/api/messages`. Your laptop on `localhost` is unreachable from the internet, so during dev we expose port 3978 via a **dev tunnel** (`https://xxx-3978.euw.devtunnels.ms`). The Toolkit registers that tunnel URL with Bot Service on every F5. In production, this URL becomes your App Service hostname.
+
+### 0.8 What the Microsoft 365 Agents Toolkit actually does on F5
+
+It's `azd` + `npm scripts` for the Teams ecosystem. F5 runs a deterministic chain (`tasks.json` → `m365agents.local.yml`):
+
+1. `uv sync` — install Python deps
+2. Validate prereqs (M365 signed in, port 3978 free)
+3. Start dev tunnel (writes `BOT_ENDPOINT` into `env/.env.local`)
+4. **Provision** — `aadApp/create` (Entra app), `botFramework/create` (Azure Bot resource pointing at your tunnel), `teamsApp/create` (catalog entry), `teamsApp/update` (uploads `appPackage.zip` with the manifest)
+5. **Deploy (local)** — copies resolved variables into the runtime `.env` file
+6. Launches `debugpy` → starts `python -m streaming_teams_agent` on port 3978
+
+After F5, open Teams in the browser at the sideload URL → install → chat. (The launch.json also calls `.vscode/open-teams.ps1` to open Edge in a specific profile — see §2.5.)
+
+### 0.9 Foundry vs "just call Azure OpenAI"
+
+A **Microsoft Foundry project** wraps an Azure OpenAI deployment with project-scoped RBAC, evaluation, monitoring, etc. The endpoint looks like:
+
+```
+https://<account>.services.ai.azure.com/api/projects/<project-name>
+```
+
+For raw chat completions you strip the `/api/projects/<name>` suffix and use the plain `services.ai.azure.com` resource as the OpenAI base URL. Auth: `DefaultAzureCredential` with scope `https://cognitiveservices.azure.com/.default`. See `src/streaming_teams_agent/foundry_client.py` for the 20 lines that handle this.
+
+### 0.10 When to use M365 Agents SDK vs alternatives
+
+| You want… | Use |
+|---|---|
+| Bot in Teams chat with streaming | **M365 Agents SDK** (this repo) |
+| Bot in Teams + Slack + WebChat from one codebase | M365 Agents SDK (same handler works on every channel) |
+| Just a REST API on App Service called by a custom UI | Plain FastAPI + Azure OpenAI |
+| Agent embedded in Microsoft 365 Copilot | Declarative Agent (manifest only, no Python) |
+| Multi-agent orchestration / tool calling / handoffs | **Microsoft Agent Framework** (can be hosted via Agents SDK) |
+
+This demo intentionally avoids the Agent Framework — the goal is to show *streaming transport*, not multi-agent patterns. You can layer Agent Framework on top later; the streaming loop in `agent.py` is unchanged.
+
+### 0.11 Project layout — where to look first
+
+```
+src/streaming_teams_agent/
+  __main__.py        # python -m streaming_teams_agent → aiohttp.run_app
+  server.py          # aiohttp routes: /api/messages, /healthz
+  agent.py           # ← the actual demo (msg handler + streaming loop) - READ THIS
+  foundry_client.py  # AsyncAzureOpenAI wired to Foundry with DefaultAzureCredential
+appPackage/
+  manifest.json      # Teams app definition; ${{TEAMS_APP_ID}} resolved at build
+env/
+  .env.local.sample  # template; .env.local is gitignored (per-developer)
+  .env.local.user    # per-developer secrets (e.g. FOUNDRY_PROJECT_ENDPOINT)
+infra/               # bicep for App Service + Bot Service + App Insights (prod)
+m365agents.local.yml # Toolkit pipeline for F5: provision + deploy steps
+m365agents.yml       # same pipeline, for `dev` / Azure deployment
+.vscode/
+  launch.json        # F5 compounds (Debug in Teams (Edge), (Chrome), Playground)
+  tasks.json         # uv sync → tunnel → provision → deploy → open browser
+  open-teams.ps1     # opens Teams sideload URL in the right Edge profile
+```
+
+**Suggested read order if you're forking this:**
+1. `src/streaming_teams_agent/agent.py` — top to bottom, the demo
+2. `src/streaming_teams_agent/foundry_client.py` — see `_resource_endpoint()` strip the `/api/projects/...` suffix
+3. `m365agents.local.yml` — understand what Toolkit does on F5
+4. `infra/azure.bicep` — App Service + Bot Service + App Insights wired with Managed Identity
+
+---
+
 ## 1. Prerequisites
 
 | Tool | Why | Install |
