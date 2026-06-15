@@ -1,8 +1,13 @@
 """Microsoft Foundry client wrapper.
 
-Uses azure-ai-projects (GA) + DefaultAzureCredential (Managed Identity in
-Azure, az login locally) to obtain a streaming chat client from your
-Foundry project.
+Uses the classic Azure OpenAI inference surface
+(`/openai/deployments/{name}/chat/completions?api-version=...`) against the
+underlying AI Services resource of a Microsoft Foundry project, with
+DefaultAzureCredential (Managed Identity in Azure, `az login` locally).
+
+We bypass `AIProjectClient.get_openai_client()` because some Foundry projects
+do not yet support its newer `/openai/v1/` routing surface and respond with
+404 DeploymentNotFound; the classic deployment-name path works everywhere.
 """
 
 from __future__ import annotations
@@ -10,8 +15,11 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
+
+_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default"
+_DEFAULT_API_VERSION = "2024-10-21"
 
 
 @lru_cache(maxsize=1)
@@ -19,25 +27,32 @@ def _credential() -> DefaultAzureCredential:
     return DefaultAzureCredential(exclude_interactive_browser_credential=False)
 
 
-@lru_cache(maxsize=1)
-def _project_client() -> AIProjectClient:
-    endpoint = os.environ.get("FOUNDRY_PROJECT_ENDPOINT")
-    if not endpoint:
+def _resource_endpoint() -> str:
+    raw = os.environ.get("FOUNDRY_PROJECT_ENDPOINT")
+    if not raw:
         raise RuntimeError(
             "FOUNDRY_PROJECT_ENDPOINT is not set. "
             "Set it to your Microsoft Foundry project endpoint, e.g. "
             "https://<your-project>.services.ai.azure.com/api/projects/<your-project>"
         )
-    return AIProjectClient(endpoint=endpoint, credential=_credential())
+    # Strip the /api/projects/<name> suffix to get the AI Services resource root,
+    # which is what the Azure OpenAI inference surface needs.
+    marker = "/api/projects/"
+    idx = raw.find(marker)
+    return raw[:idx] if idx >= 0 else raw.rstrip("/")
 
 
-def get_openai_client():
-    """Return an OpenAI-compatible client bound to your Foundry project.
-
-    The Foundry project handles auth, model routing, content safety,
-    and telemetry.
-    """
-    return _project_client().get_openai_client()
+@lru_cache(maxsize=1)
+def get_openai_client() -> AzureOpenAI:
+    """Return an Azure OpenAI client bound to the Foundry project's resource."""
+    token_provider = get_bearer_token_provider(
+        _credential(), _COGNITIVE_SERVICES_SCOPE
+    )
+    return AzureOpenAI(
+        azure_endpoint=_resource_endpoint(),
+        azure_ad_token_provider=token_provider,
+        api_version=os.environ.get("FOUNDRY_API_VERSION", _DEFAULT_API_VERSION),
+    )
 
 
 def get_model_deployment_name() -> str:

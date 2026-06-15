@@ -16,6 +16,7 @@ dependencies = [
     # Microsoft Foundry
     "azure-ai-projects>=1.0.0",
     "azure-identity>=1.19.0",
+    "openai>=1.55.0",
     # Web host + utils
     "aiohttp>=3.10.0",
     "python-dotenv>=1.0.1",
