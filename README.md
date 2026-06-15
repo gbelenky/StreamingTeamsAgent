@@ -84,7 +84,17 @@ Ask *"Tell me about the fall of Rome"* — typing indicator → progressive stre
 - `env/.env.local`, `env/.env.playground`, `env/.env.dev` — committed environment values
 - `env/.env.local.user`, `env/.env.playground.user` — **gitignored** secrets
 
-### 2.4 Manual run (no Toolkit, no F5)
+### 2.4 Troubleshooting F5
+
+| Symptom | Fix |
+|---|---|
+| Browser shows `ERR_CONNECTION_REFUSED` on `http://localhost:56150` after F5 | Playground binary wasn't installed by Toolkit. Run once: `cd devTools\teamsapptester && npm install @microsoft/teams-app-test-tool --save`. Then F5 again. |
+| F5 hangs with debugpy `KeyboardInterrupt` mid-import of `azure.core` | Stale `justMyCode: false` in `.vscode/launch.json`. Pull latest (`git pull`) — current value is `true`. |
+| Teams F5 fails: `Invalid value for key "packageName" on TeamsManifestV1D17` | Manifest schema too old. Pull latest (`git pull`) — `appPackage/manifest.json` is on v1.19. |
+| Every model call returns 401 | You skipped Step 3 in §2.1. Add **Azure AI User** role on the Foundry project to your account. |
+| F5 starts the agent but no Playground tab opens | Check both terminals exist (Python + Node). If only Python — apply the Playground fix above. Then browse to `http://localhost:56150` (note: **http**, not https). |
+
+### 2.5 Manual run (no Toolkit, no F5)
 
 If you'd rather skip the Toolkit:
 
