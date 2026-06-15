@@ -16,7 +16,7 @@ import os
 from functools import lru_cache
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
+from openai import AsyncAzureOpenAI
 
 _COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default"
 _DEFAULT_API_VERSION = "2024-10-21"
@@ -43,12 +43,19 @@ def _resource_endpoint() -> str:
 
 
 @lru_cache(maxsize=1)
-def get_openai_client() -> AzureOpenAI:
-    """Return an Azure OpenAI client bound to the Foundry project's resource."""
+def get_openai_client() -> AsyncAzureOpenAI:
+    """Return an async Azure OpenAI client bound to the Foundry project's resource.
+
+    Async is critical for streaming: a sync client's `for chunk in response:`
+    blocks the asyncio event loop, preventing the M365 Agents SDK background
+    coroutine from flushing intermediate `typing` activities to Teams. Result
+    would be that all tokens arrive in a single final message instead of
+    streaming progressively.
+    """
     token_provider = get_bearer_token_provider(
         _credential(), _COGNITIVE_SERVICES_SCOPE
     )
-    return AzureOpenAI(
+    return AsyncAzureOpenAI(
         azure_endpoint=_resource_endpoint(),
         azure_ad_token_provider=token_provider,
         api_version=os.environ.get("FOUNDRY_API_VERSION", _DEFAULT_API_VERSION),

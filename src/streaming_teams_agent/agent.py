@@ -98,7 +98,7 @@ def _register_handlers(agent_app: AgentApplication[TurnState]) -> None:
             client = get_openai_client()
             model = get_model_deployment_name()
 
-            response = client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=model,
                 stream=True,
                 messages=[
@@ -107,7 +107,7 @@ def _register_handlers(agent_app: AgentApplication[TurnState]) -> None:
                 ],
             )
 
-            for chunk in response:
+            async for chunk in response:
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
