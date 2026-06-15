@@ -8,7 +8,7 @@ The bot is a "human history tutor" — you ask a question, the answer streams in
 |---|---|
 | Runtime | Python 3.12 managed by **uv** |
 | Agent SDK | `microsoft-agents-hosting-aiohttp` 1.0 (GA) |
-| Model | Microsoft **Foundry project** chat deployment (e.g. `gpt-4o-mini`) |
+| Model | Microsoft **Foundry project** chat deployment (e.g. `gpt-4.1-mini`) |
 | Host | Azure **App Service** (Linux, Python 3.12) |
 | Channel | Azure **Bot Service** with Teams channel |
 | Telemetry | **Application Insights** (Azure Monitor OpenTelemetry) |
@@ -58,7 +58,7 @@ Do these **in order**. Steps 3 and 4 are easy to miss — without them, F5 start
 4. **Fill in `env/.env.playground.user`** (gitignored — create if it doesn't exist) with your Foundry endpoint:
     ```
     FOUNDRY_PROJECT_ENDPOINT=https://<your-proj>.services.ai.azure.com/api/projects/<your-proj>
-    FOUNDRY_MODEL_DEPLOYMENT=gpt-4o-mini
+    FOUNDRY_MODEL_DEPLOYMENT=gpt-4.1-mini
     ```
     Get the endpoint from the Foundry portal → your project → **Overview → Endpoint**. Use the deployment name of any chat model you've deployed in that project.
 5. **F5 → "Debug in M365 Agents Playground"** (see profiles below)
@@ -123,7 +123,7 @@ azd env set BOT_APP_ID                <bot-app-client-id>
 azd env set BOT_APP_SECRET            <bot-app-client-secret>
 azd env set BOT_TENANT_ID             <tenant-id>
 azd env set FOUNDRY_PROJECT_ENDPOINT  https://<proj>.services.ai.azure.com/api/projects/<proj>
-azd env set FOUNDRY_MODEL_DEPLOYMENT  gpt-4o-mini
+azd env set FOUNDRY_MODEL_DEPLOYMENT  gpt-4.1-mini
 
 # Optional: grant the bot's managed identity access to your Foundry account
 azd env set FOUNDRY_ACCOUNT_RESOURCE_ID /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>

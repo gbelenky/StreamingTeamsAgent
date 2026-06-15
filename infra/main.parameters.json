@@ -21,7 +21,7 @@
       "value": "${FOUNDRY_PROJECT_ENDPOINT}"
     },
     "foundryModelDeployment": {
-      "value": "${FOUNDRY_MODEL_DEPLOYMENT=gpt-4o-mini}"
+      "value": "${FOUNDRY_MODEL_DEPLOYMENT=gpt-4.1-mini}"
     },
     "foundryAccountResourceId": {
       "value": "${FOUNDRY_ACCOUNT_RESOURCE_ID=}"

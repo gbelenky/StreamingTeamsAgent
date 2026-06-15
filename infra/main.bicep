@@ -21,8 +21,8 @@ param botAppSecret string
 @description('Endpoint of the Microsoft Foundry project. e.g. https://<proj>.services.ai.azure.com/api/projects/<proj>')
 param foundryProjectEndpoint string
 
-@description('Name of the chat model deployment inside the Foundry project (e.g. gpt-4o-mini).')
-param foundryModelDeployment string = 'gpt-4o-mini'
+@description('Name of the chat model deployment inside the Foundry project (e.g. gpt-4.1-mini).')
+param foundryModelDeployment string = 'gpt-4.1-mini'
 
 @description('Resource id of the Microsoft Foundry account (Cognitive Services account) hosting the project. Used to assign RBAC to the agent identity.')
 param foundryAccountResourceId string = ''
