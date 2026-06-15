@@ -92,6 +92,15 @@ def _register_handlers(agent_app: AgentApplication[TurnState]) -> None:
             )
         )
 
+        # Override the SDK's default Teams flush interval (1.0s) to make the
+        # streaming UX more visible for short answers. Teams batches every
+        # queue_text_chunk() call into a `typing` activity flushed every
+        # `_interval` seconds; with a fast model and a 1s interval you only
+        # see 2-3 visible chunks on a short answer. Lowering to ~0.3s yields
+        # noticeably more progressive renders without overwhelming Teams.
+        stream_interval_s = float(environ.get("STREAM_INTERVAL_SECONDS", "0.3"))
+        stream._interval = stream_interval_s  # noqa: SLF001 — SDK exposes no setter
+
         stream.queue_informative_update("Consulting the history books…")
 
         try:
