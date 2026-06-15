@@ -1,0 +1,31 @@
+[project]
+name = "streaming-teams-agent"
+version = "0.1.0"
+description = "Simple streaming agent for Microsoft Teams using the Python M365 Agents SDK and Microsoft Foundry."
+authors = [
+    { name = "gbelenky", email = "26817885+gbelenky@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    # Microsoft 365 Agents SDK for Python (stable / GA)
+    "microsoft-agents-activity==1.0.0",
+    "microsoft-agents-hosting-core==1.0.0",
+    "microsoft-agents-hosting-aiohttp==1.0.0",
+    "microsoft-agents-hosting-teams==1.0.0",
+    "microsoft-agents-authentication-msal==1.0.0",
+    # Microsoft Foundry
+    "azure-ai-projects>=1.0.0",
+    "azure-identity>=1.19.0",
+    # Web host + utils
+    "aiohttp>=3.10.0",
+    "python-dotenv>=1.0.1",
+    # Observability (App Insights via OpenTelemetry distro)
+    "azure-monitor-opentelemetry>=1.6.0",
+]
+
+[project.scripts]
+streaming-teams-agent = "streaming_teams_agent.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"

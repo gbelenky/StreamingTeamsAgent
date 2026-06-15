@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://aka.ms/teams-toolkit/v1.5/yaml.schema.json
+# Microsoft 365 Agents Playground (test tool) lifecycle:
+# no Entra app, no Azure Bot, no tunnel — just installs the test tool
+# and writes a local .env so the Python agent runs against the Playground.
+version: v1.5
+
+deploy:
+  - uses: devTool/install
+    with:
+      testTool:
+        version: ~0.2.1
+        symlinkDir: ./devTools/teamsapptester
+
+  - uses: file/createOrUpdateEnvironmentFile
+    with:
+      target: ./.env
+      envs:
+        # Playground does not require Entra credentials.
+        CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID: ""
+        CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET: ""
+        CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID: ""
+        FOUNDRY_PROJECT_ENDPOINT: ${{FOUNDRY_PROJECT_ENDPOINT}}
+        FOUNDRY_MODEL_DEPLOYMENT: ${{FOUNDRY_MODEL_DEPLOYMENT}}
+        PORT: "3978"
+        HOST: "0.0.0.0"

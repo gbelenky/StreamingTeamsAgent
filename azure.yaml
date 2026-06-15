@@ -1,0 +1,22 @@
+name: streaming-teams-agent
+metadata:
+  template: streaming-teams-agent@1.0.0
+services:
+  api:
+    project: .
+    language: py
+    host: appservice
+hooks:
+  postprovision:
+    windows:
+      shell: pwsh
+      run: |
+        Write-Host "Provisioned. Set env vars and deploy with 'azd deploy'."
+    posix:
+      shell: sh
+      run: |
+        echo "Provisioned. Set env vars and deploy with 'azd deploy'."
+infra:
+  provider: bicep
+  path: infra
+  module: main

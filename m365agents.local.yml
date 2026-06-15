@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://aka.ms/teams-toolkit/v1.5/yaml.schema.json
+# Local F5 lifecycle: creates Entra app + bot registration + dev tunnel,
+# sideloads the Teams app, then launches the Python agent.
+version: v1.5
+
+provision:
+  # 1. Create or reuse a Teams app entry in Teams Developer Portal
+  - uses: teamsApp/create
+    with:
+      name: StreamingHistoryAgent-${{TEAMSFX_ENV}}
+    writeToEnvironmentFile:
+      teamsAppId: TEAMS_APP_ID
+
+  # 2. Create or reuse a Microsoft Entra app for the bot
+  - uses: aadApp/create
+    with:
+      name: StreamingHistoryAgent-${{TEAMSFX_ENV}}
+      generateClientSecret: true
+      signInAudience: AzureADMultipleOrgs
+    writeToEnvironmentFile:
+      clientId: BOT_ID
+      clientSecret: SECRET_BOT_PASSWORD
+      objectId: BOT_OBJECT_ID
+      tenantId: BOT_TENANT_ID
+
+  # 3. Register / update bot in the Bot Framework with the dev tunnel endpoint
+  - uses: botFramework/create
+    with:
+      botId: ${{BOT_ID}}
+      name: StreamingHistoryAgent
+      messagingEndpoint: ${{BOT_ENDPOINT}}/api/messages
+      description: "Streaming history tutor (local F5)"
+      channels:
+        - name: msteams
+
+  # 4. Build and sideload the Teams app package
+  - uses: teamsApp/validateManifest
+    with:
+      manifestPath: ./appPackage/manifest.json
+  - uses: teamsApp/zipAppPackage
+    with:
+      manifestPath: ./appPackage/manifest.json
+      outputZipPath: ./appPackage/build/appPackage.${{TEAMSFX_ENV}}.zip
+      outputJsonPath: ./appPackage/build/manifest.${{TEAMSFX_ENV}}.json
+  - uses: teamsApp/update
+    with:
+      appPackagePath: ./appPackage/build/appPackage.${{TEAMSFX_ENV}}.zip
+
+deploy:
+  # Map Toolkit-managed values into the env names our Python agent expects.
+  - uses: file/createOrUpdateEnvironmentFile
+    with:
+      target: ./.env
+      envs:
+        CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID: ${{BOT_ID}}
+        CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET: ${{SECRET_BOT_PASSWORD}}
+        CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID: ${{BOT_TENANT_ID}}
+        FOUNDRY_PROJECT_ENDPOINT: ${{FOUNDRY_PROJECT_ENDPOINT}}
+        FOUNDRY_MODEL_DEPLOYMENT: ${{FOUNDRY_MODEL_DEPLOYMENT}}
+        PORT: "3978"
+        HOST: "0.0.0.0"

@@ -1,0 +1,83 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "uv sync",
+      "type": "shell",
+      "command": "uv sync",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Validate prerequisites",
+      "type": "teamsfx",
+      "command": "debug-check-prerequisites",
+      "args": {
+        "prerequisites": ["m365Account", "portOccupancy"],
+        "portOccupancy": [3978]
+      }
+    },
+    {
+      "label": "Start local tunnel",
+      "type": "teamsfx",
+      "command": "debug-start-local-tunnel",
+      "args": {
+        "type": "dev-tunnel",
+        "ports": [
+          {
+            "portNumber": 3978,
+            "protocol": "http",
+            "access": "public",
+            "writeToEnvironmentFile": {
+              "endpoint": "BOT_ENDPOINT",
+              "domain": "BOT_DOMAIN"
+            }
+          }
+        ],
+        "env": "local"
+      },
+      "isBackground": true,
+      "problemMatcher": "$teamsfx-local-tunnel-watch"
+    },
+    {
+      "label": "Provision",
+      "type": "teamsfx",
+      "command": "provision",
+      "args": { "env": "local" }
+    },
+    {
+      "label": "Deploy",
+      "type": "teamsfx",
+      "command": "deploy",
+      "args": { "env": "local" }
+    },
+    {
+      "label": "Start Teams App Locally",
+      "dependsOn": [
+        "uv sync",
+        "Validate prerequisites",
+        "Start local tunnel",
+        "Provision",
+        "Deploy"
+      ],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "Validate prerequisites (Playground)",
+      "type": "teamsfx",
+      "command": "debug-check-prerequisites",
+      "args": {
+        "prerequisites": ["nodejs", "portOccupancy"],
+        "portOccupancy": [3978, 56150]
+      }
+    },
+    {
+      "label": "Deploy (Playground)",
+      "type": "teamsfx",
+      "command": "deploy",
+      "args": { "env": "playground" },
+      "dependsOn": ["uv sync", "Validate prerequisites (Playground)"],
+      "dependsOrder": "sequence"
+    }
+  ]
+}

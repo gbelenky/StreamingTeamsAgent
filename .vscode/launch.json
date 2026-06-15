@@ -1,0 +1,68 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch App in Teams (Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "url": "https://teams.microsoft.com/l/app/${{local:TEAMS_APP_ID}}?installAppPackage=true&webjoin=true&${account-hint}",
+      "presentation": { "group": "all", "hidden": true },
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "Launch App in Teams (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "https://teams.microsoft.com/l/app/${{local:TEAMS_APP_ID}}?installAppPackage=true&webjoin=true&${account-hint}",
+      "presentation": { "group": "all", "hidden": true },
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "Start Python",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streaming_teams_agent",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe"
+    },
+    {
+      "name": "Start Playground",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/devTools/teamsapptester/node_modules/@microsoft/teams-app-test-tool/cli.js",
+      "args": ["start"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug in Teams (Edge)",
+      "configurations": ["Launch App in Teams (Edge)", "Start Python"],
+      "cascadeTerminateToConfigurations": ["Start Python"],
+      "preLaunchTask": "Start Teams App Locally",
+      "presentation": { "group": "1-local", "order": 1 },
+      "stopAll": true
+    },
+    {
+      "name": "Debug in Teams (Chrome)",
+      "configurations": ["Launch App in Teams (Chrome)", "Start Python"],
+      "cascadeTerminateToConfigurations": ["Start Python"],
+      "preLaunchTask": "Start Teams App Locally",
+      "presentation": { "group": "1-local", "order": 2 },
+      "stopAll": true
+    },
+    {
+      "name": "Debug in M365 Agents Playground",
+      "configurations": ["Start Python", "Start Playground"],
+      "cascadeTerminateToConfigurations": ["Start Playground"],
+      "preLaunchTask": "Deploy (Playground)",
+      "presentation": { "group": "2-local", "order": 1 },
+      "stopAll": true
+    }
+  ]
+}

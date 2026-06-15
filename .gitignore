@@ -1,0 +1,41 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+.python-version
+
+# env — the manual-run dotenv file at repo root
+/.env
+
+# Toolkit secret env files (provisioned per-developer)
+env/.env.*.user
+
+# Toolkit
+.fx/
+.deployment/
+devTools/
+.notification.*.json
+
+# azd
+.azure/
+
+# IDE
+.vscode/*.log
+.idea/
+*.code-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Teams package output
+appPackage/build/
+
+# Node (if any tool installs locally)
+node_modules/
