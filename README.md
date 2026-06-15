@@ -78,11 +78,25 @@ Ask *"Tell me about the fall of Rome"* — typing indicator → progressive stre
 
 ### 2.3 What the Toolkit set up for you
 
-- `m365agents.local.yml` — local F5 lifecycle (Teams app, Entra app, Bot Framework registration, dev tunnel, sideload, env mapping)
-- `m365agents.playground.yml` — Playground lifecycle (installs Playground, writes `.env`)
-- `m365agents.yml` — production lifecycle (manifest validate + publish to Teams Admin Center; Azure resources are owned by `azd`)
-- `env/.env.local`, `env/.env.playground`, `env/.env.dev` — committed environment values
-- `env/.env.local.user`, `env/.env.playground.user` — **gitignored** secrets
+**Lifecycle YAMLs (one per Toolkit "environment"):**
+
+- `m365agents.local.yml` — local F5 lifecycle for **Debug in Teams**: registers Entra app, registers Bot Framework bot, starts dev tunnel, sideloads Teams app, maps secrets into `.env`
+- `m365agents.playground.yml` — local F5 lifecycle for **Debug in Playground**: installs the Playground test tool, writes a tunnel-free `.env` with anonymous-auth enabled
+- `m365agents.yml` — production lifecycle for `azd deploy` / Teams Admin Center publish; Azure resources are owned by Bicep under `infra/`
+
+**Environment files (one set per Toolkit environment, plus a sample):**
+
+| File | Committed? | Written by | Read by | What's in it |
+|---|---|---|---|---|
+| `env/.env.local` | ✅ yes | Toolkit `provision` (Debug in Teams) | `m365agents.local.yml` | Non-secret IDs: `BOT_ID`, `TEAMS_APP_ID`, `BOT_DOMAIN`, `AZURE_SUBSCRIPTION_ID`… |
+| `env/.env.local.user` | ❌ gitignored | Toolkit `provision` (Debug in Teams) | `m365agents.local.yml` | Secrets: `SECRET_BOT_PASSWORD`, `CONNECTIONS__…CLIENTSECRET` |
+| `env/.env.playground` | ✅ yes | you (defaults shipped) | `m365agents.playground.yml` | `TEAMSAPPTESTER_PORT`, `FOUNDRY_MODEL_DEPLOYMENT` (default value) |
+| `env/.env.playground.user` | ❌ gitignored | **you** | `m365agents.playground.yml` | Your `FOUNDRY_PROJECT_ENDPOINT` (the URL for your Foundry project) |
+| `env/.env.dev` | ✅ yes | placeholder for cloud `provision` (unused if you deploy via `azd`) | `m365agents.yml` | Same shape as `.env.local` but for the `dev` Toolkit environment |
+| `.env.sample` | ✅ yes | you (template) | `python -m streaming_teams_agent` (manual run) | Annotated template — copy to `.env` for §2.5 manual run |
+| `.env` (project root) | ❌ gitignored | Toolkit Deploy step (merges committed + `.user` + injected) | the Python agent at runtime | The fully resolved set of env vars the agent actually sees |
+
+**The golden rule:** never put secrets in committed `.env.*` files — put them in `.env.*.user` (which is gitignored). The Toolkit lifecycle merges both at Deploy time into the project-root `.env` that the Python process reads.
 
 ### 2.4 Troubleshooting F5
 
