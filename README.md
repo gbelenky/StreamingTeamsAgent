@@ -88,6 +88,7 @@ Ask *"Tell me about the fall of Rome"* — typing indicator → progressive stre
 
 | Symptom | Fix |
 |---|---|
+| Playground UI loads but every message returns 401 | The agent rejects unauthenticated calls. Pull latest (`git pull`) — `m365agents.playground.yml` now injects `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__ANONYMOUS_ALLOWED=true`. Then delete the cached `.env` and re-run F5 so Toolkit re-deploys the playground env. |
 | Browser shows `ERR_CONNECTION_REFUSED` on `http://localhost:56150` after F5 | Playground binary wasn't installed by Toolkit. Run once: `cd devTools\teamsapptester && npm install @microsoft/teams-app-test-tool --save`. Then F5 again. |
 | F5 hangs with debugpy `KeyboardInterrupt` mid-import of `azure.core` | Stale `justMyCode: false` in `.vscode/launch.json`. Pull latest (`git pull`) — current value is `true`. |
 | Teams F5 fails: `Invalid value for key "packageName" on TeamsManifestV1D17` | Manifest schema too old. Pull latest (`git pull`) — `appPackage/manifest.json` is on v1.19. |
