@@ -24,7 +24,7 @@
       "module": "streaming_teams_agent",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "justMyCode": false,
+      "justMyCode": true,
       "envFile": "${workspaceFolder}/.env",
       "python": "${workspaceFolder}/.venv/Scripts/python.exe"
     },
