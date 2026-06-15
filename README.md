@@ -179,7 +179,119 @@ For raw chat completions you strip the `/api/projects/<name>` suffix and use the
 
 This demo intentionally avoids the Agent Framework — the goal is to show *streaming transport*, not multi-agent patterns. You can layer Agent Framework on top later; the streaming loop in `agent.py` is unchanged.
 
-### 0.11 Project layout — where to look first
+### 0.11 One implementation, many endpoints (`/api/messages` is just one of them)
+
+The handler in `agent.py` doesn't know anything about Teams or Bot Service — it just receives a `TurnContext` and replies. The transport is decided by which **route** you mount on the aiohttp server.
+
+This repo wires the handler to `POST /api/messages` (the Bot Framework Connector endpoint) — that's what Teams, Slack, WebChat, etc. talk to. But the same `AgentApplication` instance can be exposed simultaneously over additional protocols by registering more routes in `server.py`:
+
+| Endpoint | Protocol | Talks to | Notes |
+|---|---|---|---|
+| `POST /api/messages` | **Bot Framework Connector** (Activity Protocol) | Teams, Slack, WebChat, Direct Line, Telegram, M365 Copilot | This repo's default. JWT-validated. |
+| `POST /a2a` | **Agent-to-Agent (A2A)** | Other AI agents (Microsoft Agent Framework, AutoGen, etc.) | Lets your agent be *called by* another agent as a tool / sub-agent |
+| `POST /v1/chat/completions` | **OpenAI-compatible** | Any OpenAI SDK client, OpenWebUI, Continue.dev, custom UIs | Wrap the handler in an OpenAI-shaped streaming response |
+| `POST /mcp` | **Model Context Protocol (MCP)** | Claude Desktop, VS Code, Cursor, any MCP host | Exposes the agent's tools/resources/prompts to MCP clients |
+| `GET /stream` | **Server-Sent Events** / WebSocket | Custom web UI | For browser-native streaming without Bot Connector overhead |
+
+**Same business logic, different "front doors."** The pattern is identical to how a FastAPI service can expose REST + GraphQL + gRPC against the same domain model. Pick the transport(s) you need, mount the routes, share the handler.
+
+For this demo we stick to `/api/messages` only — but if you fork this and want, say, A2A so another MAF agent can call it as a tool, you'd add ~30 lines to `server.py` and reuse `agent.py` unchanged.
+
+### 0.12 Hosting options — App Service is just the default, not the only choice
+
+The agent is a standard Python aiohttp app listening on a port (3978 by default). **Anywhere that can run a Python process with public ingress will work.** The `infra/` folder ships with **App Service** as the path of least resistance, but the same container/source code drops cleanly into:
+
+| Target | When to pick it | Notes |
+|---|---|---|
+| **Azure App Service** (Linux, Python 3.12) | Default. Simplest. PaaS, auto-cert, autoscale, easy to deploy with `azd`. | What `infra/azure.bicep` provisions today. |
+| **Azure Container Apps** | You want serverless containers with scale-to-zero, KEDA-driven scaling, Dapr integration, or revisions for blue/green. | `uv run` → `docker build` → `az containerapp create`. ~30 lines of bicep change. |
+| **Azure Kubernetes Service (AKS)** | You already run an AKS platform, need fine-grained networking (private link, NetworkPolicy), or want to colocate with other microservices. | Standard Deployment + Service + Ingress. Use Workload Identity for Foundry auth (replaces the App Service Managed Identity wiring). |
+| **Azure Functions** (Python, Custom Handler or HTTP-triggered) | You want pure pay-per-execution. **Caveat:** streaming bot responses fit awkwardly in Functions because outbound `typing` activities require holding the connection open while you call the Connector — works, but you lose most of the cost benefit vs. App Service. Better fit for non-streaming bots or webhooks. | Possible but not recommended for this streaming use case. |
+| **Azure Container Instances / Self-hosted / anywhere with a public TCP socket** | Demos, edge, on-prem. | Bot Service just needs to be able to reach your URL with a public HTTPS cert. |
+
+**What you change to switch hosts:** in `infra/` only. The Python code is unchanged. The Bot Service registration's `messagingEndpoint` (see §0.13) just needs to point at the new host's URL.
+
+A natural progression is **App Service for v1 → Container Apps for v2 (scale-to-zero saves money for spiky chat traffic) → AKS only if you have platform reasons to be there.**
+
+### 0.13 Configuring the Azure Bot Service resource
+
+`botFramework/create` (the step in `m365agents.local.yml`) automates this for you — but if you ever provision it manually (`az bot create`, Bicep, or the Azure portal), here's what gets wired:
+
+#### What an "Azure Bot" resource actually is
+
+A thin Azure-side proxy that:
+1. Holds a reference to your **Entra App Registration** (`clientId` + a client secret or Federated Identity Credential) — this proves which app is allowed to publish to the bot.
+2. Stores a `messagingEndpoint` (your URL) where the Bot Service Connector forwards every inbound user activity.
+3. Has a list of **channels enabled** (Microsoft Teams, Slack, Webex, Direct Line, etc.) — each channel = one routing target. You enable Teams to make your bot appear in Teams.
+4. Exposes a connection string for outbound replies (signed JWTs).
+
+Resource type: `Microsoft.BotService/botServices`. Pricing tier: **F0 (free)** is fine for dev and even production sideloaded bots.
+
+#### Required configuration
+
+| Setting | Value for this demo | Why |
+|---|---|---|
+| **Kind** | `azurebot` | The modern unified resource (vs. legacy `bot` / `function` kinds). |
+| **`msaAppType`** | `SingleTenant` | Bot only authenticates against your dev tenant. Use `MultiTenant` only if you'll publish to the Teams Store. |
+| **`msaAppId`** | The `clientId` of your Entra app (from `aadApp/create`) | Identifies the bot's Entra app. |
+| **`msaAppTenantId`** | Your tenant GUID | Required for `SingleTenant`. |
+| **`endpoint`** (a.k.a. `messagingEndpoint`) | `https://<your-host>/api/messages` | Where Bot Service POSTs inbound user messages. In dev = dev tunnel URL. In prod = App Service URL. **Must end with `/api/messages`** by convention (it's just the route you register). |
+| **Display name** | `StreamingHistoryAgent-local` (or whatever) | Shown in Bot Framework and Teams sideload prompts. |
+| **SKU** | `F0` | Free tier supports unlimited Standard channels (Teams, WebChat, Direct Line). `S1` is needed only for Premium channels (e.g., Email, SMS via Twilio). |
+
+#### Channels to enable
+
+For this demo, **Microsoft Teams** is the only channel you need to enable. Toolkit does this via `botFramework/create` → `channels: [msteams]`. Adding more channels later is one line in the bicep — same agent, no code changes.
+
+#### Auth wiring — the part that confuses everyone
+
+There are **three** places that need the same Entra `clientId` / `clientSecret`:
+
+1. **Azure Bot resource** — for inbound JWT issuance (so the Connector signs JWTs *as your bot*).
+2. **Your code's environment** — `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` + `CLIENTSECRET` so the MSAL middleware can both *validate* inbound JWTs and *acquire* outbound tokens for `https://api.botframework.com/.default`.
+3. **Entra service principal** in your tenant — required so step 2's outbound token acquisition succeeds. Usually auto-created by `botFramework/create`. If missing, you get `AADSTS7000229` — fix: `az ad sp create --id <clientId>`.
+
+#### Bicep skeleton (for prod deployment, see `infra/azure.bicep`)
+
+```bicep
+resource bot 'Microsoft.BotService/botServices@2022-09-15' = {
+  name: botName
+  location: 'global'                      // Bot Service is always 'global'
+  sku: { name: 'F0' }
+  kind: 'azurebot'
+  properties: {
+    displayName: botName
+    endpoint: 'https://${appService.properties.defaultHostName}/api/messages'
+    msaAppType: 'SingleTenant'
+    msaAppId: entraAppClientId            // from your Entra app registration
+    msaAppTenantId: tenant().tenantId
+    developerAppInsightKey: appInsights.properties.InstrumentationKey
+  }
+}
+
+resource msteamsChannel 'Microsoft.BotService/botServices/channels@2022-09-15' = {
+  parent: bot
+  name: 'MsTeamsChannel'
+  location: 'global'
+  properties: {
+    channelName: 'MsTeamsChannel'
+    properties: { isEnabled: true }
+  }
+}
+```
+
+#### Bot Service vs Entra App — who is who
+
+| Object | What it is | Lifecycle |
+|---|---|---|
+| **Entra App Registration** (`Microsoft.Graph/applications`) | The identity blueprint (clientId, redirect URIs, API permissions, secrets) | Created once, edited rarely. Created by `aadApp/create`. |
+| **Entra Service Principal** | An instance of the App in *your tenant* — the thing actually granted permissions and used for token acquisition | Created automatically when the App is consented to in a tenant. If missing in your tenant: `az ad sp create --id <appId>`. |
+| **Azure Bot Service resource** (`Microsoft.BotService/botServices`) | The Azure-side Connector proxy that holds the messagingEndpoint and channel list, and references the Entra App | Created by `botFramework/create` / `az bot create`. One per environment (local, dev, prod). |
+| **Teams app** (manifest.json + appPackage.zip) | The Teams catalog entry that points end users at the bot | Created by `teamsApp/create` / uploaded to Teams Admin Center. |
+
+In your dev flow, **all four are created automatically on F5**.
+
+### 0.14 Project layout — where to look first
 
 ```
 src/streaming_teams_agent/
