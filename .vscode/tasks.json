@@ -52,6 +52,30 @@
       "args": { "env": "local" }
     },
     {
+      "label": "Open Teams in Edge",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$id = (Select-String -Path '${workspaceFolder}/env/.env.local' -Pattern '^TEAMS_APP_ID=(.+)$').Matches[0].Groups[1].Value; Start-Process msedge.exe \"https://teams.microsoft.com/l/app/$id?installAppPackage=true&webjoin=true\""
+      ],
+      "presentation": { "reveal": "silent", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Open Teams in Chrome",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$id = (Select-String -Path '${workspaceFolder}/env/.env.local' -Pattern '^TEAMS_APP_ID=(.+)$').Matches[0].Groups[1].Value; Start-Process chrome.exe \"https://teams.microsoft.com/l/app/$id?installAppPackage=true&webjoin=true\""
+      ],
+      "presentation": { "reveal": "silent", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
       "label": "Start Teams App Locally",
       "dependsOn": [
         "uv sync",
@@ -60,6 +84,16 @@
         "Provision",
         "Deploy"
       ],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "Start Teams App Locally (Edge)",
+      "dependsOn": ["Start Teams App Locally", "Open Teams in Edge"],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "Start Teams App Locally (Chrome)",
+      "dependsOn": ["Start Teams App Locally", "Open Teams in Chrome"],
       "dependsOrder": "sequence"
     },
     {

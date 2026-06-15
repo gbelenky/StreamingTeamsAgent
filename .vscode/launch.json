@@ -2,22 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch App in Teams (Edge)",
-      "type": "msedge",
-      "request": "launch",
-      "url": "https://teams.microsoft.com/l/app/${{local:TEAMS_APP_ID}}?installAppPackage=true&webjoin=true&${account-hint}",
-      "presentation": { "group": "all", "hidden": true },
-      "internalConsoleOptions": "neverOpen"
-    },
-    {
-      "name": "Launch App in Teams (Chrome)",
-      "type": "chrome",
-      "request": "launch",
-      "url": "https://teams.microsoft.com/l/app/${{local:TEAMS_APP_ID}}?installAppPackage=true&webjoin=true&${account-hint}",
-      "presentation": { "group": "all", "hidden": true },
-      "internalConsoleOptions": "neverOpen"
-    },
-    {
       "name": "Start Python",
       "type": "debugpy",
       "request": "launch",
@@ -42,17 +26,17 @@
   "compounds": [
     {
       "name": "Debug in Teams (Edge)",
-      "configurations": ["Launch App in Teams (Edge)", "Start Python"],
+      "configurations": ["Start Python"],
       "cascadeTerminateToConfigurations": ["Start Python"],
-      "preLaunchTask": "Start Teams App Locally",
+      "preLaunchTask": "Start Teams App Locally (Edge)",
       "presentation": { "group": "1-local", "order": 1 },
       "stopAll": true
     },
     {
       "name": "Debug in Teams (Chrome)",
-      "configurations": ["Launch App in Teams (Chrome)", "Start Python"],
+      "configurations": ["Start Python"],
       "cascadeTerminateToConfigurations": ["Start Python"],
-      "preLaunchTask": "Start Teams App Locally",
+      "preLaunchTask": "Start Teams App Locally (Chrome)",
       "presentation": { "group": "1-local", "order": 2 },
       "stopAll": true
     },
