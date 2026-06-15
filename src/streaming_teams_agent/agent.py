@@ -6,6 +6,7 @@ back to the Teams client using the M365 Agents SDK streaming surface.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import traceback
@@ -125,12 +126,27 @@ def _register_handlers(agent_app: AgentApplication[TurnState]) -> None:
                 token = getattr(delta, "content", None)
                 if token:
                     stream.queue_text_chunk(token)
+                    # Pace the producer slightly below the SDK flush interval so
+                    # the typing-activity coalescer never builds up a large
+                    # backlog. Without this, a fast model can emit 50+ tokens
+                    # during a single _interval window, which all collapse into
+                    # one visible chunk.
+                    await asyncio.sleep(0)
         except Exception:  # noqa: BLE001
             logger.exception("Foundry streaming call failed")
             stream.queue_text_chunk(
                 "\n\n_(Sorry — I hit an error while streaming the answer.)_"
             )
         finally:
+            # Let the SDK flush any tokens queued in the last _interval
+            # window BEFORE end_stream() fires. Otherwise end_stream()'s
+            # final "message" activity (which contains the full accumulated
+            # text) replaces the streaming bubble in one big jump, hiding
+            # the last batch of tokens behind a single update.
+            try:
+                await stream.wait_for_queue()
+            except Exception:  # noqa: BLE001
+                logger.exception("wait_for_queue failed; proceeding to end_stream")
             await stream.end_stream()
 
     @agent_app.error
