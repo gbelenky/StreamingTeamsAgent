@@ -16,6 +16,10 @@ wheels/
 # Toolkit secret env files (provisioned per-developer)
 env/.env.*.user
 
+# Toolkit per-developer env file (filled with personal BOT_ID, TENANT_ID, tunnel URL during F5).
+# Ship env/.env.local.sample as the template instead.
+env/.env.local
+
 # Toolkit
 .fx/
 .deployment/
