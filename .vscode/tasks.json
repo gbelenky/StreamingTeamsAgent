@@ -53,24 +53,26 @@
     },
     {
       "label": "Open Teams in Edge",
-      "type": "shell",
+      "type": "process",
       "command": "powershell",
       "args": [
         "-NoProfile",
-        "-Command",
-        "$id = (Select-String -Path '${workspaceFolder}/env/.env.local' -Pattern '^TEAMS_APP_ID=(.+)$').Matches[0].Groups[1].Value; Start-Process msedge.exe \"https://teams.microsoft.com/l/app/$id?installAppPackage=true&webjoin=true\""
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/.vscode/open-teams.ps1",
+        "-Browser", "msedge"
       ],
       "presentation": { "reveal": "silent", "panel": "dedicated" },
       "problemMatcher": []
     },
     {
       "label": "Open Teams in Chrome",
-      "type": "shell",
+      "type": "process",
       "command": "powershell",
       "args": [
         "-NoProfile",
-        "-Command",
-        "$id = (Select-String -Path '${workspaceFolder}/env/.env.local' -Pattern '^TEAMS_APP_ID=(.+)$').Matches[0].Groups[1].Value; Start-Process chrome.exe \"https://teams.microsoft.com/l/app/$id?installAppPackage=true&webjoin=true\""
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/.vscode/open-teams.ps1",
+        "-Browser", "chrome"
       ],
       "presentation": { "reveal": "silent", "panel": "dedicated" },
       "problemMatcher": []
